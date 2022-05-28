@@ -41,6 +41,7 @@ class TEdit2 extends TEdit {
   }
 }
 */
+
 class TRPlanRent extends TRPlan {
   constructor(AOwner) {
     super(AOwner);

@@ -13,13 +13,6 @@ class TStudentCard {
 //     getStudentCards(query) {  }
 // }
 
-// var parser = new window.DxfParser();
-// var dxf = parser.parseSync(fileReader.result);
-// cadCanvas = new ThreeDxf.Viewer(dxf, document.getElementById('cad-view'), 400, 400);
-
-// window.CanvasElement = document.getElementById("canvas");
-// window.Canvas = CanvasElement.getContext('2d');
-
 $(window).on('load', function() {
     
 });
