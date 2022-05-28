@@ -1,0 +1,385 @@
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="ru">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<!--<link rel="icon" href="app/main/main_icon.png">
+<link rel="apple-touch-icon" href="app/main/main_icon.png"/>-->
+<title>RPLAN</title>
+<script src="forms.js" type="text/javascript"></script>
+<script src="sysutils.js" type="text/javascript"></script>
+</head>
+<body style="margin: 0px 0px 0px 0px; overflow: hidden;">
+<div id="app" style="width:100%; height:100%"></div>
+
+<script type="text/javascript">
+
+window.onerror = function(errorMsg, url, lineNumber) {
+  console.log('<span style="color:#ff0000">'+errorMsg+', line:'+lineNumber+'</span>');
+  return false;
+}
+//////////////////////////////////////////////
+class TLoader {
+  constructor() {
+    this.ScriptList = [];
+    this.ResList = {};
+    this.ResPath = {};
+    this.ResData = {};
+    this.Promises = [];
+    this.Errors = [];
+  }
+  Progress(Promise) {
+    if ((Promise)&&(this.Errors.length>0)) return;
+    if (Promise) Promise.done = true;
+    var PC = 0;
+    for (var P of this.Promises) if (P.done) PC++;
+
+    if (this.OnProgress) {
+      this.OnProgress(this, PC/this.Promises.length*100, typeof Promise === 'undefined');
+      return;
+    }
+
+    var Canvas = Application.FCanvas;
+    var w = Application.Width/Viewport/100;
+    var h = Application.Height/Viewport/100;
+    Canvas.save();
+    Canvas.beginPath();
+    Canvas.roundRect(10*w, 90*h, 80*w, 1*h, 0.5*h);
+    Canvas.clip();
+
+    Canvas.fillStyle = '#ffffff';
+    Canvas.fill();
+    Canvas.strokeStyle = '#888888';
+    Canvas.stroke();
+
+    Canvas.beginPath();
+    Canvas.rect(10*w, 90*h, 80*w*PC/this.Promises.length, 1*h, 0.5*h);
+    if (Promise) Canvas.fillStyle = '#222222'; else Canvas.fillStyle = '#ff0000';
+    Canvas.fill();
+
+    Canvas.restore();
+  }
+  LoadScript(key) {
+    if (this.ScriptList.indexOf(key)>0) return;
+    this.ScriptList.push(key);
+    var P = new Promise(function(resolve, reject) {
+      var script = document.createElement('script');
+      script.addEventListener("load", () => resolve(script));
+      script.addEventListener("error", err => reject(err));
+      script.async = false;
+      script.src = key;
+      document.head.appendChild(script);
+    }).then(function() {this.Progress(P);}.bind(this));
+    this.Promises.push(P);
+  }
+  LoadURL(FileName, ResponseType = 'arraybuffer') {
+    var P = new Promise(function(resolve, reject) {
+      var xhr = new XMLHttpRequest();
+      xhr.open('GET', FileName, true);
+      xhr.responseType = ResponseType;
+      xhr.onload = function() {resolve(xhr.response);}
+      xhr.onerror = function() {reject(xhr.statusText);}
+      xhr.send();
+    });
+    return(P);
+  }
+  LoadImg(key) {
+/*    this.Promises.push(new Promise((resolve, reject) => {
+      var img = document.createElement('img');
+      img.addEventListener("load", () => resolve(img));
+      img.addEventListener("error", err => reject(err));
+      img.src = this.ResPath[key];
+      this.ResList[key] = img;
+    }));*/
+    var P = this.LoadURL(this.ResPath[key]);
+    this.Promises.push(P);
+    P.then(function(data) {
+      this.ResData[key] = data;
+      var PP = new Promise((resolve, reject) => {
+        var img = document.createElement('img');
+        img.addEventListener("load", () => resolve(img));
+        img.addEventListener("error", err => reject(err));
+        img.src = URL.createObjectURL(new Blob([this.ResData[key]]));
+        this.ResList[key] = img;
+      });
+      this.Promises.push(PP);
+      PP.then(function() {this.Progress(PP);}.bind(this));
+      this.Progress(P);
+    }.bind(this));
+  }
+  LoadFont(key) {
+    if (window.FontFace) {
+      var P = this.LoadURL(this.ResPath[key]);
+      this.Promises.push(P);
+      P.then(function(data) {
+        this.ResData[key] = data;
+        var font = new FontFace(this.fn(key).slice(0, -this.ext(key).length-1), this.ResData[key]);
+        document.fonts.add(font);
+        var PP = font.loaded.then(function() {this.Progress(PP);}.bind(this));
+        this.Promises.push(PP);
+        this.Progress(P);
+      }.bind(this));
+    } else {
+      var P = new Promise((resolve, reject) => {
+        var fn = this.fn(key).slice(0, -this.ext(key).length-1);
+        var font = document.createElement('style');
+        font.innerHTML = '@font-face {font-family: "'+fn+'"; src: url('+this.ResPath[key]+') format("truetype");}';
+        font.addEventListener("load", () => resolve(font));
+        font.addEventListener("error", err => reject(err));
+        document.head.appendChild(font);
+        var span = document.createElement('span');
+        span.style = 'position:absolute; left:0px; top:-200px; font: 10px '+fn;
+        span.innerHTML = 'a';
+        document.body.appendChild(span);
+        this.ResData[key] = new ArrayBuffer();
+      }).then(function() {this.Progress(P);}.bind(this));
+      this.Promises.push(P);
+    }
+  }
+  LoadAudio(key) {
+    var P = this.LoadURL(this.ResPath[key]);
+    this.Promises.push(P);
+    P.then(function(data) {this.Progress(P); this.ResData[key] = data;}.bind(this));
+  }
+  LoadRes(key, value) {
+    this.ResPath[key] = value;
+    if (this.isImg(key)) this.LoadImg(key);
+    if (this.isFont(key)) this.LoadFont(key);
+    if (this.isAudio(key)) this.LoadAudio(key);
+  }
+  Load() {
+    return(new Promise(async(resolve, reject) => {
+      try {
+        for (;;) {
+          var PromisesLength = this.Promises.length;
+          await Promise.all(this.Promises).then(function() {
+    //        console.log('Loader: finished', PromisesLength, 'from', this.Promises.length, 'promises');
+          }.bind(this));
+          if (PromisesLength==this.Promises.length) break;
+        }
+        // console.log loader info
+        var CImg=0, CFont=0, CAudio=0;
+        for (var key in this.ResPath)
+          if (this.isImg(key)) CImg++; else
+          if (this.isFont(key)) CFont++; else
+          if (this.isAudio(key)) CAudio++;
+        console.log('Loader: load', this.ScriptList.length+CImg+CFont+CAudio, 'objects (', this.ScriptList.length, 'scripts,', CImg, 'images,', CFont, 'fonts,', CAudio, 'audio)');
+        resolve();
+      } catch(e) {
+        console.log(e);
+        this.Errors.push(e);
+        this.Progress();
+        reject();
+      }
+    }));
+  }
+  fn(key) {return(this.ResPath[key].split('/').pop());}
+  ext(key) {return(this.ResPath[key].split('.').pop().toLowerCase());}
+  in(key, array) {return(array.indexOf(key)>=0);}
+  isScript(key) {return(this.in(this.ext(key), ['js']));}
+  isImg(key) {return(this.in(this.ext(key), ['png', 'jpg', 'jpeg', 'bmp', 'tif', 'tiff', 'gif']));}
+  isFont(key) {return(this.in(this.ext(key), ['ttf']));}
+  isAudio(key) {return(this.in(this.ext(key), ['wav', 'mp3']));}
+}
+var Loader = new TLoader();
+var Images = Loader.ResList;
+var uses = function(r) {for (var i=0; i<arguments.length; i++) Loader.LoadScript(arguments[i]);}
+var res = function(r) {for (var key in r) Loader.LoadRes(key, r[key]);}
+
+//////////////////////////////////////////////
+
+var Viewport = 1/window.devicePixelRatio;
+//if (window.devicePixelRatio==1) Viewport = Viewport/2;
+var Application;
+
+/*
+async function main() {
+  Application = new TApplication(document.getElementById("app"));
+
+  //uses("sysutils.js", "forms.js");
+
+  // block for EDGE
+  if ((!window.TextEncoder)||(!window.TextDecoder)) {
+    window.TextEncoder = null;
+    window.TextDecoder = null;
+    uses("lib/text_encoding/encoding.js");
+  }
+
+  uses("sysutils_drive.js");
+  uses("app/rplan/rpitems.js", "app/rplan/rpmain.js");
+
+  uses("app/main/main.js");
+  uses("app/calc/calc.js");
+  uses("app/note/note.js");
+  uses("app/photo/photo.js");
+  uses("app/rplan/rplan.js");
+  uses("app/jsdelphi/jsdelphi.js");
+  uses("app/pacman/pacman.js");
+  uses("app/scan/scan.js");
+  uses("app/system/system.js");
+  uses("app/far/far.js");
+  uses("app/sign/sign.js");
+  uses("app/explorer/explorer.js");
+  uses("app/whatsapp/whatsapp.js");
+  uses("app/hammer/hammer.js");
+  uses("app/rent/rent.js");
+  uses("app/pdfviewer/pdfviewer.js");
+  uses("app/map/map.js");
+  await Loader.Load();
+  for (var key in Loader.ResData) await SaveFile('C:\\'+Loader.fn(key), Loader.ResData[key]);
+
+  var Class = TFormMain;
+  var AppName = decodeURI(window.location.search).slice(1);
+  var r = window.RegistryApplication;
+  for (var i=0; i<r.length; i++) if (r[i][0] == AppName) Class = r[i][2];
+
+  Application.CreateForm(Class, 'FormMain');
+  Application.Run();
+
+  FormMain.RunApp(FormMain.FControls[FormMain.FControls.length-3], null);
+//  Execute('D:\\Аренда_презентация_2019.pdf');
+//  Execute('D:\\акты Алекма.pdf');
+  //</dpr>
+}*/
+
+class TFormLoad extends TForm {
+  constructor(AOwner) {
+    super(AOwner);
+    this.Properties = {Left: 0, Top: 0, FontSize: 12, Color: '#ffffff'};
+    this.Percent = 0;
+    this.Error = false;
+    Loader.OnProgress = this.OnProgress.bind(this);
+    this.Label1 = new TLabel(this);
+    this.Label1.Properties = {Parent: this, Left:100, Top:100, Width:200, Height:50, Caption:''};
+  }
+  Paint(Sender, Canvas) {
+//    console.log('paint');
+    var w = Application.Width/Viewport/100;
+    var h = Application.Height/Viewport/100;
+    Canvas.save();
+    Canvas.beginPath();
+    Canvas.roundRect(10*w, 90*h, 80*w, 1*h, 0.5*h);
+    Canvas.clip();
+
+    Canvas.fillStyle = '#ffffff';
+    Canvas.fill();
+    Canvas.strokeStyle = '#888888';
+    Canvas.stroke();
+
+    Canvas.beginPath();
+    Canvas.rect(10*w, 90*h, 80*w*this.Percent/100, 1*h, 0.5*h);
+    if (!this.Error) Canvas.fillStyle = '#222222'; else Canvas.fillStyle = '#ff0000';
+    Canvas.fill();
+
+    Canvas.restore();
+  }
+  OnProgress(Sender, Percent, Error) {
+    console.log(Percent, Error);
+    this.Percent = Percent;
+    this.Error = Error;
+//    this.Label1.Caption = this.Percent;
+    this.ShowRequire = true;
+
+    if (this.Percent==100) {
+      delete(Loader.OnProgress);
+      Application.RemoveForm(this);
+/*
+      var Class = TFormMain;
+      var AppName = decodeURI(window.location.search).slice(1);
+      var r = window.RegistryApplications;
+      for (var i=0; i<r.length; i++) if (r[i][0] == AppName) Class = r[i][2];
+      Application.CreateForm(Class, 'FormMain');
+      Application.MainForm = FormMain;
+*/
+    }
+  }
+}
+
+async function main() {
+  Application = new TApplication(document.getElementById("app"));
+  Application.CreateForm(TFormLoad, 'FormLoad');
+  Application.Run();
+
+  // block for EDGE
+  if ((!window.TextEncoder)||(!window.TextDecoder)) {
+    window.TextEncoder = null;
+    window.TextDecoder = null;
+    uses("lib/text_encoding/encoding.js");
+  }
+
+//  uses("sysutils_drive.js");
+  uses("app/rplan/rpitems.js", "app/rplan/rpmain.js");
+//  uses("app/calc/calc.js");
+//  uses("app/scan/scan.js");
+//  uses("app/main/main.js");
+/*  uses("app/calc/calc.js");
+  uses("app/note/note.js");
+  uses("app/photo/photo.js");
+  uses("app/rplan/rplan.js");
+  uses("app/jsdelphi/jsdelphi.js");
+  uses("app/pacman/pacman.js");
+  uses("app/scan/scan.js");
+  uses("app/system/system.js");
+  uses("app/far/far.js");
+  uses("app/sign/sign.js");
+  uses("app/explorer/explorer.js");
+  uses("app/whatsapp/whatsapp.js");
+  uses("app/hammer/hammer.js");
+  uses("app/rent/rent.js");
+  uses("app/pdfviewer/pdfviewer.js");
+  uses("app/map/map.js");*/
+
+  uses("app/hostel/hostel.js");
+  await Loader.Load();
+/*
+  RegistryApplication(['main', '', 'TFormMain', {}, 'app/main/main.js']);
+  RegistryApplication(['Калькулятор', 'app/calc/calc_icon.png', 'TFormCalc', {}, 'app/calc/calc.js']);
+  RegistryApplication(['Блокнот', 'app/note/note_icon.png', 'TFormNote', {'txt': ''}, 'app/note/note.js']);
+  RegistryApplication(['Фотографии', 'app/photo/photo_icon.png', 'TFormPhoto', {'png': '', 'jpg': '', 'jpeg': '', 'bmp': '', 'tif': '', 'tiff': '', 'gif': ''}, 'app/photo/photo.js']);
+  RegistryApplication(['RPlan', 'app/rplan/rplan_icon.png', 'TFormRPlan', {'pln': '', 'dxf': 'app/rplan/dxf_icon.png'}, 'app/rplan/rplan.js']);
+  RegistryApplication(['JSDelphi', 'app/jsdelphi/jsdelphi_icon.png', 'TFormJSDelphi', {}, 'app/jsdelphi/jsdelphi.js']);
+  RegistryApplication(['Pacman', 'app/pacman/pacman_icon.png', 'TFormPacman', {}, 'app/pacman/pacman.js']);
+  RegistryApplication(['Scan', 'app/scan/scan_icon.png', 'TFormScan', {}, 'app/scan/scan.js']);
+  RegistryApplication(['System', 'app/system/system_icon.png', 'TFormSystem', {}, 'app/system/system.js']);
+  RegistryApplication(['Far', 'app/far/far_icon.png', 'TFormFar', {}, 'app/far/far.js']);
+  RegistryApplication(['Sign', 'app/sign/pencil_icon.png', 'TFormSign', {}, 'app/sign/sign.js']);
+  RegistryApplication(['Explorer', 'app/explorer/explorer_icon.png', 'TFormExplorer', {}, 'app/explorer/explorer.js']);
+  RegistryApplication(['Whatsapp', 'app/whatsapp/whatsapp_icon.png', 'TFormWhatsapp', {}, 'app/whatsapp/whatsapp.js']);
+  RegistryApplication(['Молоток', 'app/hammer/hammer_icon.png', 'TFormHammer', {}, 'app/hammer/hammer.js']);
+  RegistryApplication(['Rent', 'app/rent/rent_icon.png', 'TFormRent', {}, 'app/rent/rent.js']);
+  RegistryApplication(['PDF', 'app/pdfviewer/pdfviewer_icon.png', 'TFormPdfViewer', {'pdf': ''}, 'app/pdfviewer/pdfviewer.js']);
+  RegistryApplication(['Карта', 'app/map/map_icon.png', 'TFormMap', {}, 'app/map/map.js']);
+///////////////////
+*/
+  RegistryApplication(['Hostel', '', 'TFormHostel', {}, 'app/hostel/hostel.js']);
+///////////////////
+//  var AppName = decodeURI(window.location.search).slice(1);
+//  if (AppName.length == 0) AppName = 'Candles';
+  await OS.Execute('Hostel');
+  Application.MainForm = Application.FControls[0].Form;
+
+////////////////////
+  //await OS.Execute('Свечи');
+  //await OS.Execute('D:\\LICENSE.txt');
+////////////////////
+
+//  for (var key in Loader.ResData) await SaveFile('C:\\'+Loader.fn(key), Loader.ResData[key]);
+//  console.log(Application.FControls);
+}
+
+main();
+
+/*var input_bottom_counter = 0;
+function input_bottom(input) {
+  input_bottom_counter+=10;
+  input.style.bottom=input_bottom_counter+'px';
+}
+function input_focus(input) {
+  input.style.top='100px';
+}*/
+</script>
+<!--
+<input type="text" style="opacity:1.02; position:fixed; border:none; outline:none; bottom:0px; left:0px; width:100%; height:40px" oninput="input_bottom(this);" onfocus="input_focus(this);">
+-->
+</body>
+</html>

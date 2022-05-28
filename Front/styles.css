@@ -1,0 +1,88 @@
+body {
+    height: 100%; overflow: hidden
+}
+
+.navbar {
+    border-bottom-left-radius: 20pt;
+    border-bottom-right-radius: 20pt;
+}
+
+.bg-dark {
+    background-color: #0F68B1 !important;
+}
+
+.dark-blue-bg {
+    background-color: #0B4C81;
+    border-width: 0pt;
+    border-radius: 20pt;
+}
+
+.form-control::placeholder { /* Chrome, Firefox, Opera, Safari 10.1+ */
+    color: #0F68B1;
+    opacity: 1; /* Firefox */
+}
+
+.mapcontainer {   
+    position: absolute; 
+    z-index: 0;
+}
+
+.popup {
+    border-radius: 5px;
+    border: 1px solid grey;
+    background-color: rgba(255, 255, 255, 0.9);
+    padding: 2px;
+}
+
+.vertical-alignment-helper {
+    display:table;
+    height: 100%;
+    width: 100%;
+    pointer-events:none; /* This makes sure that we can still click outside of the modal to close it */
+}
+.vertical-align-center {
+    /* To center vertically */
+    display: table-cell;
+    vertical-align: middle;
+    pointer-events:none;
+}
+.modal-content {
+    /* Bootstrap sets the size of the modal in the modal-dialog class, we need to inherit it */
+    width:inherit;
+    max-width:inherit; /* For Bootstrap 4 - to avoid the modal window stretching full width */
+    height:inherit;
+    /* To center horizontally */
+    margin: 0 auto;
+    pointer-events: all;
+}
+
+div#overlay { 
+    position:absolute;
+    bottom:0; 
+    left:0;
+    background-color: #0F68B1;
+    width: 40%;
+    height: 100%;
+    z-index: 2;
+}
+
+.legend {
+    position: absolute;
+    bottom: 0; 
+    right: 0;
+    padding-right: 10px;
+}
+
+.hstack {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    align-self: stretch;
+}
+    
+.vstack {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    align-self: stretch;
+}
