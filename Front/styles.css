@@ -2,11 +2,6 @@ body {
     height: 100%; overflow: hidden
 }
 
-.navbar {
-    border-bottom-left-radius: 20pt;
-    border-bottom-right-radius: 20pt;
-}
-
 .bg-dark {
     background-color: #0F68B1 !important;
 }
