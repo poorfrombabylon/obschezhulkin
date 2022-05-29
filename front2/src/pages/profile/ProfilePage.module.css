@@ -1,0 +1,26 @@
+.ProfilePage {
+    display: grid;
+    grid-template-areas: 
+    "p i i"
+    "p i i"
+    "p o o";
+}
+
+
+.ProfileAvatar {
+    max-width: 300px;
+    height: 300px;
+
+}
+
+.Profile {
+    grid-area: 'p';
+}
+
+.ProfileInfo {
+    grid-area: 'i';
+}
+
+.ProfileChar {
+    grid-area: 'o';
+}
